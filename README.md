@@ -1,2 +1,2 @@
 # WebGL-Ray-marching
-Ray marching imlementation in WebGL
+Ray marching implementation in WebGL
