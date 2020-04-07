@@ -102,7 +102,7 @@ function drawScene(gl, programInfo, buffers, deltaTime) {
 
   // Now move the drawing position a bit to where we want to
   // start drawing the square.
-  //rotation += deltaTime;
+  rotation += deltaTime;
 
   glMatrix.mat4.translate(modelViewMatrix, modelViewMatrix, [0.0, 0.0, -1]); 
   //glMatrix.mat4.rotate(modelViewMatrix, modelViewMatrix, squareRotation, [1,0,0]);
@@ -128,8 +128,9 @@ function drawScene(gl, programInfo, buffers, deltaTime) {
 
   gl.uniformMatrix4fv(programInfo.uniformLocations.projectionMatrix, false, projectionMatrix);
   gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, modelViewMatrix);
-  gl.uniform3fv(programInfo.uniformLocations.cameraPosition, [0.,0., 5.]);
-  gl.uniform2fv(programInfo.uniformLocations.resolution, [gl.canvas.clientHeight,gl.canvas.clientWidth]);
+  gl.uniform3fv(programInfo.uniformLocations.cameraPosition, [4.*Math.cos(rotation),-1., 4.*Math.sin(rotation)]);
+  gl.uniform2fv(programInfo.uniformLocations.resolution, [gl.canvas.clientWidth,gl.canvas.clientHeight]);
+  gl.uniform3fv(programInfo.uniformLocations.lookAt, [0.,0.,0.]);
 
   {
     const offset = 0;
@@ -161,17 +162,31 @@ function main() {
   const fsSource = `
 precision mediump float;
 uniform vec3 cameraPosition;
+uniform vec3 lookAt;
 uniform vec2 resolution;
 const float EPS = 0.0001;
 const int MAX_STEP = 150;
 const float ZOOM = 1.3;
 
-float sphereSDF(vec3 point, float radius) {
-  return length(point) - radius;
+float sphereSDF(vec3 point, vec3 center, float radius) {
+  return length(point - center) - radius;
 }
 
 float sceneSDF(vec3 point) {
-  return sphereSDF(point, 1.);
+  point.xyz = mod(point.xyz + 0.5*vec3(2.,2.,2.), vec3(2.,2.,2.)) - 0.5*vec3(2.,2.,2.);
+  return sphereSDF(point, vec3(0.,0.,0.), 0.2);
+}
+
+mat4 viewMatrix(vec3 eye, vec3 center, vec3 up) {
+  vec3 f = normalize(center - eye);
+  vec3 s = normalize(cross(f, up));
+  vec3 u = cross(s, f);
+  return mat4(
+    vec4(s, 0.0),
+    vec4(u, 0.0),
+    vec4(-f, 0.0),
+    vec4(0.0, 0.0, 0.0, 1)
+  );
 }
 
 vec4 rayMarch(vec3 camera, vec3 dir) {
@@ -185,15 +200,21 @@ vec4 rayMarch(vec3 camera, vec3 dir) {
       point += dir*leng;
     }
   }
-  return vec4(leng,point);
+  return vec4(point,leng);
 }
 
 void main() {
   vec2 co = gl_FragCoord.xy/resolution*2.0 - 1.0;
   co.x *= resolution.x/resolution.y;
-  vec3 rayDirection = normalize(vec3(co,cameraPosition.z-ZOOM) - cameraPosition);
-  vec4 l = rayMarch(cameraPosition, rayDirection);
-  gl_FragColor = vec4(l.yzw,1.0);
+  vec3 cameraDirection = normalize(cameraPosition-lookAt);
+  vec3 cameraRight = cross(cameraDirection, vec3(0.,1.,0.));
+  vec3 cameraUp = cross(cameraDirection, cameraRight);
+  mat4 view = viewMatrix(cameraPosition, lookAt, cameraUp);
+  
+  vec3 rayDirection = normalize(vec3(co,5.-ZOOM) - vec3(0.,0.,5.));
+
+  vec4 l = rayMarch(cameraPosition, (view*vec4(rayDirection, 0.0)).xyz);
+  if (l.w <= EPS) gl_FragColor = vec4(0.6,0.0,0.0,1.0); 
 }
   `;
 
@@ -208,6 +229,7 @@ void main() {
       modelViewMatrix: gl.getUniformLocation(shaderProgram, 'uModelViewMatrix'),
       cameraPosition: gl.getUniformLocation(shaderProgram, 'cameraPosition'),
       resolution: gl.getUniformLocation(shaderProgram, 'resolution'),
+      lookAt: gl.getUniformLocation(shaderProgram, 'lookAt'),
     },
   };
   
