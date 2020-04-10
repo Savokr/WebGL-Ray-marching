@@ -128,7 +128,7 @@ function drawScene(gl, programInfo, buffers, deltaTime) {
 
   //gl.uniformMatrix4fv(programInfo.uniformLocations.projectionMatrix, false, projectionMatrix);
   //gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, modelViewMatrix);
-  gl.uniform3fv(programInfo.uniformLocations.cameraPosition, [6.*Math.sin(rotation/2.), 4., 6.*Math.cos(rotation/2.)]);
+  gl.uniform3fv(programInfo.uniformLocations.cameraPosition, [4.*Math.sin(rotation/2.)+6, 4.*Math.cos(rotation/2.)+6., 5.*rotation]);
   gl.uniform2fv(programInfo.uniformLocations.resolution, [gl.canvas.clientWidth,gl.canvas.clientHeight]);
   gl.uniform3fv(programInfo.uniformLocations.lookAt, [0.,0.,0.]);
 
@@ -200,6 +200,17 @@ mat4 viewMatrix(vec3 eye, vec3 center, vec3 up) {
   );
 }
 
+vec3 getNormal(vec3 point) {
+  return normalize(vec3(sceneSDF(point + vec3(EPS,0.,0.)) - sceneSDF(point-vec3(EPS,0.,0.)), 
+              sceneSDF(point + vec3(0.,EPS,0.)) - sceneSDF(point-vec3(0.,EPS,0.)), 
+              sceneSDF(point + vec3(0.,0.,EPS)) - sceneSDF(point-vec3(0.,0.,EPS)) ) );
+}
+
+float getIllumination(vec3 point) {
+  vec3 light = vec3(4.,4.,0.);
+  return clamp(dot(getNormal(point),normalize(light-point)), 0., 1.);
+}
+
 vec4 rayMarch(vec3 camera, vec3 dir) {
   vec3 point = camera;
   float leng = 0.0;
@@ -225,7 +236,7 @@ void main() {
   vec3 rayDirection = normalize(vec3(co,-ZOOM));
 
   vec4 l = rayMarch(cameraPosition, normalize((view*vec4(rayDirection,0.)).xyz));
-  if (l.w <= EPS) gl_FragColor = vec4(l.xyz/6.,1.0); else gl_FragColor = vec4(1.0);
+  if (l.w <= EPS) gl_FragColor = vec4(getNormal(l.xyz),1.);//getIllumination(l.xyz); else gl_FragColor = vec4(0.,0.,0.,1.0);
 }
   `;
 
