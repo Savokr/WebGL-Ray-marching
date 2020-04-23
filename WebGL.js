@@ -1,10 +1,8 @@
-var rotation = 0.0;
+var time = 0.0;
 
 function initShaderProgram(gl, vsSource, fsSource) {
   const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
   const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
-
-  // Create the shader program
 
   const shaderProgram = gl.createProgram();
   gl.attachShader(shaderProgram, vertexShader);
@@ -20,21 +18,12 @@ function initShaderProgram(gl, vsSource, fsSource) {
   return shaderProgram;
 }
 
-// creates a shader of the given type, uploads the source and
-// compiles it.
-
 function loadShader(gl, type, source) {
   const shader = gl.createShader(type);
 
-  // Send the source to the shader object
-
   gl.shaderSource(shader, source);
 
-  // Compile the shader program
-
   gl.compileShader(shader);
-
-  // See if it compiled successfully
 
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
     alert('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
@@ -45,31 +34,17 @@ function loadShader(gl, type, source) {
   return shader;
 }
 
-
-// Create a buffer for objects in the scene
-
 function initBuffers(gl) {
-
-  // Create a buffer for the square's positions.
 
   const positionBuffer = gl.createBuffer();
 
-  // Select the positionBuffer as the one to apply buffer
-  // operations to from here out.
-
   gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-
-  // Now create an array of positions for the square.
 
   const positions = [
     -1.0,  1.0,
      1.0,  1.0,
     -1.0, -1.0,
      1.0, -1.0];
-
-  // Now pass the list of positions into WebGL to build the
-  // shape. We do this by creating a Float32Array from the
-  // JavaScript array, then use it to fill the current buffer.
 
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
 
@@ -78,13 +53,25 @@ function initBuffers(gl) {
   };
 }
 
+function resize(canvas) {
+    var displayWidth  = canvas.clientWidth;
+    var displayHeight = canvas.clientHeight;
+
+    if (canvas.width  !== displayWidth ||
+        canvas.height !== displayHeight) {
+      canvas.width  = displayWidth;
+      canvas.height = displayHeight;
+    }
+  }
+
 function drawScene(gl, programInfo, buffers, deltaTime) {
   gl.clearColor(0.0, 0.0, 0.0, 1.0);  // Clear to black, fully opaque
   gl.clearDepth(1.0);                 // Clear everything
   gl.enable(gl.DEPTH_TEST);           // Enable depth testing
   gl.depthFunc(gl.LEQUAL);            // Near things obscure far things
 
-  // Clear the canvas before we start drawing on it.
+  resize(gl.canvas);
+  gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -96,19 +83,13 @@ function drawScene(gl, programInfo, buffers, deltaTime) {
 
   //glMatrix.mat4.perspective(projectionMatrix, fieldOfView, aspect, zNear, zFar);
 
-  // Set the drawing position to the "identity" point, which is
-  // the center of the scene.
   //const modelViewMatrix = glMatrix.mat4.create();
 
-  // Now move the drawing position a bit to where we want to
-  // start drawing the square.
-  rotation += deltaTime;
+  time+= deltaTime;
 
   //glMatrix.mat4.translate(modelViewMatrix, modelViewMatrix, [0.0, 0.0, -1]); 
   //glMatrix.mat4.rotate(modelViewMatrix, modelViewMatrix, squareRotation, [1,0,0]);
 
-  // Tell WebGL how to pull out the positions from the position
-  // buffer into the vertexPosition attribute.
   {
     const numComponents = 2;  // pull out 2 values per iteration
     const type = gl.FLOAT;    // the data in the buffer is 32bit floats
@@ -120,15 +101,11 @@ function drawScene(gl, programInfo, buffers, deltaTime) {
     gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
   }
 
-  // Tell WebGL to use our program when drawing
-
   gl.useProgram(programInfo.program);
-
-  // Set the shader uniforms
 
   //gl.uniformMatrix4fv(programInfo.uniformLocations.projectionMatrix, false, projectionMatrix);
   //gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, modelViewMatrix);
-  gl.uniform3fv(programInfo.uniformLocations.cameraPosition, [4.*Math.sin(rotation/2.)+6, 4.*Math.cos(rotation/2.)+6., 5.*rotation]);
+  gl.uniform3fv(programInfo.uniformLocations.cameraPosition, [6.*Math.sin(time/2.), 3., 6.*Math.cos(time/2.)]);
   gl.uniform2fv(programInfo.uniformLocations.resolution, [gl.canvas.clientWidth,gl.canvas.clientHeight]);
   gl.uniform3fv(programInfo.uniformLocations.lookAt, [0.,0.,0.]);
 
@@ -155,15 +132,14 @@ function main() {
       gl_Position = aVertexPosition;
     }
   `;
-
   // Fragment shader GLSL code
   const fsSource = `
 precision mediump float;
 uniform vec3 cameraPosition;
 uniform vec3 lookAt;
 uniform vec2 resolution;
-const float EPS = 0.001;
-const int MAX_STEP = 250;
+const float EPS = 0.01;
+const int MAX_STEP = 100;
 const float ZOOM = 1.3;
 
 float smin( float a, float b, float k )
@@ -180,12 +156,17 @@ float planeSDF(vec3 point, float height) {
   return point.y - height;
 }
 
+float boxSDF(vec3 point, vec3 bound)
+{
+  vec3 q = abs(point) - bound;
+  return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
+}
+
 float sceneSDF(vec3 point) {
-  point.xz = mod(point.xz+vec2(1.5), vec2(3.)) - vec2(1.5);
-  return min(min(max(sphereSDF(point, vec3(0.,1.,0.), 1.),
-                       -sphereSDF(point, vec3(0.,2.,0.), 0.8)),
-                       sphereSDF(point, vec3(0.,2.3,0.),0.4)),
-                       planeSDF(point, 0.));
+  //point.xyz = mod(point.xyz+vec3(2.), vec3(4.)) - vec3(2.);
+  float a = min(sphereSDF(point, vec3(0.,0.,0.), 1.4), sphereSDF(point, vec3(2.,1.5,3.), 1.));
+  float b = min(min(boxSDF(point, vec3(999999999., 0.5, 0.5)), boxSDF(point, vec3(0.5,999999999., 0.5))), boxSDF(point, vec3(0.5,0.5,999999999.)) );
+  return smin(a,b,0.3);
 }
 
 mat4 viewMatrix(vec3 eye, vec3 center, vec3 up) {
@@ -206,10 +187,6 @@ vec3 getNormal(vec3 point) {
               sceneSDF(point + vec3(0.,0.,EPS)) - sceneSDF(point-vec3(0.,0.,EPS)) ) );
 }
 
-float getIllumination(vec3 point) {
-  vec3 light = vec3(4.,4.,0.);
-  return clamp(dot(getNormal(point),normalize(light-point)), 0., 1.);
-}
 
 vec4 rayMarch(vec3 camera, vec3 dir) {
   vec3 point = camera;
@@ -225,6 +202,15 @@ vec4 rayMarch(vec3 camera, vec3 dir) {
   return vec4(point,leng);
 }
 
+float getIllumination(vec3 point) {
+  vec3 light = vec3(4.,4.,0.);
+  vec3 normal = getNormal(point);
+  float ill = clamp(dot(normal, normalize(light-point)), 0., 1.);
+  float dist = length(rayMarch(point+normal*2.*EPS,normalize(light-point)).xyz-point);
+  if (dist < length(light-point)) ill*= 0.1; else ill *=1.4;
+  return ill; 
+}
+
 void main() {
   vec2 co = gl_FragCoord.xy/resolution*2.0 - 1.0;
   co.x *= resolution.x/resolution.y;
@@ -236,9 +222,10 @@ void main() {
   vec3 rayDirection = normalize(vec3(co,-ZOOM));
 
   vec4 l = rayMarch(cameraPosition, normalize((view*vec4(rayDirection,0.)).xyz));
-  if (l.w <= EPS) gl_FragColor = vec4(getNormal(l.xyz),1.);//getIllumination(l.xyz); else gl_FragColor = vec4(0.,0.,0.,1.0);
+  vec3 color = (vec3(getIllumination(l.xyz)) + vec3(0.2))*vec3(0.4,0.5,0.6);
+  if (l.w <= EPS) gl_FragColor = vec4(color,1.); else gl_FragColor = vec4(0.,0.,0.,1.0);
 }
-  `;
+  `; 
 
   const shaderProgram = initShaderProgram(gl,vsSource,fsSource)
   const programInfo = {
